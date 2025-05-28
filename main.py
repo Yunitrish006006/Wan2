@@ -12,6 +12,7 @@ import numpy as np
 import torch
 
 import gradio as gr
+from prompt_enhancer import PromptEnhancer
 
 sys.path.insert(
     0, os.path.sep.join(os.path.realpath(__file__).split(os.path.sep)[:-2]))
@@ -49,6 +50,7 @@ class VACEInference:
         self.save_dir = cfg.save_dir
         self.gallery_share = gallery_share
         self.gallery_share_data = FixedSizeQueue(max_size=gallery_share_limit)
+        self.prompt_enhancer = PromptEnhancer()
         if not skip_load:
             if not args.mp:
                 self.pipe = WanVace(
@@ -129,6 +131,19 @@ class VACEInference:
                     elem_classes='type_row',
                     visible=True,
                     lines=2)
+                with gr.Row():
+                    self.enhance_prompt_button = gr.Button(
+                        value='增強提示詞',
+                        elem_classes='type_row',
+                        elem_id='enhance_prompt_button',
+                        visible=True)
+                    self.detail_level = gr.Slider(
+                        label='詳細程度',
+                        minimum=1,
+                        maximum=3,
+                        step=1,
+                        value=2,
+                        interactive=True)
                 self.negative_prompt = gr.Textbox(
                     show_label=False,
                     value=self.pipe.config.sample_neg_prompt,
@@ -188,19 +203,6 @@ class VACEInference:
                     label='resolutions_height',
                     value=480,
                     # value=720,
-                    interactive=True)
-                self.output_width = gr.Textbox(
-                    label='resolutions_width',
-                    value=832,
-                    # value=1280,
-                    interactive=True)
-                self.frame_rate = gr.Textbox(
-                    label='frame_rate', value=16, interactive=True)
-                self.num_frames = gr.Textbox(
-                    label='num_frames', value=81, interactive=True)
-        #
-        with gr.Row(equal_height=True):
-            with gr.Column(scale=5):
                 self.generate_button = gr.Button(
                     value='Run',
                     elem_classes='type_row',
@@ -222,6 +224,20 @@ class VACEInference:
             lines=4,
             max_lines=10,
             visible=True)
+
+    def enhance_prompt(self, prompt, detail_level):
+        """
+        Enhance the user prompt using the PromptEnhancer.
+        
+        Args:
+            prompt (str): The original user prompt
+            detail_level (int): Level of detail to add (1-3)
+            
+        Returns:
+            str: The enhanced prompt
+        """
+        enhanced = self.prompt_enhancer.enhance_prompt(prompt, detail_level=detail_level)
+        return enhanced
 
     def generate(self, output_gallery, src_video, src_mask, src_ref_image_1,
                  src_ref_image_2, src_ref_image_3, prompt, negative_prompt,
@@ -308,6 +324,11 @@ class VACEInference:
             self.generate,
             inputs=self.gen_inputs,
             outputs=self.gen_outputs,
+            queue=True)
+        self.enhance_prompt_button.click(
+            self.enhance_prompt,
+            inputs=[self.prompt, self.detail_level],
+            outputs=[self.prompt],
             queue=True)
         self.refresh_button.click(
             lambda x: self.gallery_share_data.get()
